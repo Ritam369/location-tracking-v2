@@ -3,7 +3,7 @@ import { PUBLIC_KEY } from "./cert.js";
 
 /**
  * Verifies a JWT and returns the decoded claims.
- * Throws if invalid or expired.
+ * Throws error if invalid or expired.
  *
  * Claims shape:
  * {

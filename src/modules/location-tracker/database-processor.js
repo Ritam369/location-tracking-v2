@@ -1,6 +1,6 @@
 import { kafkaClient } from "./kafka-client.js";
 
-async function init() {
+export async function startDatabaseProcessor() {
   const consumer = kafkaClient.consumer({ groupId: "database-processor" });
   await consumer.connect();
 
@@ -21,4 +21,8 @@ async function init() {
   });
 }
 
-init();
+// Keeps working as a standalone script: bun run db:processor
+// When imported by the server, the caller invokes startDatabaseProcessor() explicitly
+if (import.meta.url === new URL(process.argv[1], "file://").href) {
+  startDatabaseProcessor();
+}

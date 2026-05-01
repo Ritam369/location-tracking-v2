@@ -21,9 +21,9 @@ Users sign in via the OIDC server, get a JWT set as an `httpOnly` cookie on the 
 |---|---|
 | Runtime | [Bun](https://bun.sh) |
 | Web framework | Express 5 |
-| Real-time | Socket.IO 4 |
-| Message broker | Apache Kafka (KafkaJS) |
-| Auth | Custom OIDC — RS256 JWT (jsonwebtoken + node-jose) |
+| Real-time | Socket.IO |
+| Message broker | Kafka (KafkaJS) |
+| Auth | Custom OIDC (jsonwebtoken + node-jose) |
 | Database | PostgreSQL 17 (Drizzle ORM) |
 | Infrastructure | Docker Compose |
 
@@ -184,10 +184,9 @@ Browser
 
 ## Assumptions & Limitations
 
-- **Single broker** — Kafka runs as a single-node KRaft cluster (no Zookeeper). Not suitable for production without a multi-broker setup.
-- **No HTTPS** — cookies use `sameSite: lax` without `secure`, so this only works over `http://localhost`. Add TLS before any public deployment.
-- **SHA-256 password hashing** — intentionally simple for a learning project. Use `bcrypt` or `argon2` in production.
+- **Single broker** — Kafka runs as a single cluster (no Zookeeper).
+- **No HTTPS** — Have to add TLS before any public deployment.
 - **No token refresh** — JWTs expire after 1 hour with no refresh mechanism.
-- **Location history is not persisted** — the DB processor logs to stdout. A real insert requires a `location_history` table and schema migration.
-- **No rate limiting** — the OIDC endpoints and Socket.IO events have no throttling.
-- **Geolocation accuracy** — depends entirely on the browser/device; no server-side validation of coordinate ranges.
+- **Location history is not persisted** — the DB processor just simpualtes logging for now. A real insert requires a `location_history` table and schema migration.
+- **No rate limiting** — the OIDC endpoints and Socket.IO events have no rate-limiting features.
+- **Geolocation accuracy** — depends entirely on the browser/device and leaflet; no server-side validation of coordinate ranges.
