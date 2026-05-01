@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Location Tracker</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <style>
+      #map { height: 100vh; }
+      #go-to-my-location {
+        display: none; position: fixed; bottom: 24px; right: 24px; z-index: 1000;
+        background: white; border: none; border-radius: 50%; width: 40px; height: 40px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.4); cursor: pointer; padding: 8px;
+      }
+      #go-to-my-location:hover { background: #f0f0f0; }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <button id="go-to-my-location" title="Go to my location">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#1a73e8">
+        <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0 0 13 3.06V1h-2v2.06A8.994 8.994 0 0 0 3.06 11H1v2h2.06A8.994 8.994 0 0 0 11 20.94V23h2v-2.06A8.994 8.994 0 0 0 20.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
+      </svg>
+    </button>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const map = L.map("map").setView([51.505, -0.09], 13);
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      }).addTo(map);
+
+      const socket = io();
+
+      // keyed by userId
+      const remoteMarkers = new Map();
+
+      socket.on("server:location:update", ({ userId, firstName, latitude, longitude }) => {
+        // skip own updates — server broadcasts to everyone including sender
+        if (userId === socket.userId) return;
+
+        if (!remoteMarkers.has(userId)) {
+          const marker = L.marker([latitude, longitude]).addTo(map).bindPopup(`User: ${firstName}`);
+          remoteMarkers.set(userId, marker);
+        } else {
+          remoteMarkers.get(userId).setLatLng([latitude, longitude]);
+        }
+      });
+
+      socket.on("server:user:disconnected", ({ userId }) => {
+        const marker = remoteMarkers.get(userId);
+        if (marker) {
+          map.removeLayer(marker);
+          remoteMarkers.delete(userId);
+        }
+      });
+
+      // expose own userId once socket connects so we can filter self out above
+      socket.on("connect", () => {
+        // userId is embedded in the cookie-verified session on the server;
+        // server emits it back on connection so the client knows its own userId
+        socket.emit("client:whoami");
+      });
+
+      socket.on("server:whoami", ({ userId }) => {
+        socket.userId = userId;
+      });
+
+      function getUserCurrentLocation() {
+        return new Promise((res, rej) => {
+          if (!("geolocation" in navigator)) {
+            alert("Geolocation is not supported by this browser.");
+            return;
+          }
+          navigator.geolocation.getCurrentPosition(
+            (pos) => res({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+            (err) => rej(err),
+            { enableHighAccuracy: true }
+          );
+        });
+      }
+
+      let userCurrentLocationMarker = null;
+      let lastKnownLatLng = null;
+      const goToMyLocationBtn = document.getElementById("go-to-my-location");
+
+      goToMyLocationBtn.addEventListener("click", () => {
+        if (userCurrentLocationMarker) map.flyTo(userCurrentLocationMarker.getLatLng(), 15);
+      });
+
+      map.on("move", () => {
+        if (!userCurrentLocationMarker) return;
+        const dist = map.getCenter().distanceTo(userCurrentLocationMarker.getLatLng());
+        goToMyLocationBtn.style.display = dist > 2000 ? "block" : "none";
+      });
+
+      async function mapper() {
+        setInterval(async () => {
+          const { latitude, longitude } = await getUserCurrentLocation();
+          socket.emit("client:location:update", { latitude, longitude });
+
+          if (!userCurrentLocationMarker) {
+            userCurrentLocationMarker = L.marker([latitude, longitude]).addTo(map).bindPopup("You are here.");
+            map.flyTo([latitude, longitude], 15);
+            lastKnownLatLng = L.latLng(latitude, longitude);
+          } else {
+            userCurrentLocationMarker.setLatLng([latitude, longitude]);
+            const newLatLng = L.latLng(latitude, longitude);
+            if (!lastKnownLatLng.equals(newLatLng)) map.panTo(newLatLng, map.getZoom());
+            lastKnownLatLng = newLatLng;
+          }
+        }, 5 * 1000);
+      }
+
+      window.addEventListener("load", mapper);
+    </script>
+  </body>
+</html>
