@@ -176,14 +176,9 @@ Browser
 
 ---
 
-## Demo Video
-
-[Watch the demo](#) ← _replace with your actual link_
-
----
-
 ## Assumptions & Limitations
 
+- **No OAuth2.0** — Implemented OIDC protocol but couldn't apply OAuth2.0 as I can't deploy my site, though I built it properly and it's working properly in local enviroment, but due to no deployment, I had to use OIDC code in this codebase.
 - **Single broker** — Kafka runs as a single cluster (no Zookeeper).
 - **No HTTPS** — Have to add TLS before any public deployment.
 - **No token refresh** — JWTs expire after 1 hour with no refresh mechanism.
