@@ -1,16 +1,31 @@
 import JWT from "jsonwebtoken";
-import { PUBLIC_KEY } from "./cert.js";
+import jwksClient from "jwks-rsa";
 
-/**
- * Verifies a JWT and returns the decoded claims.
- * Throws error if invalid or expired.
- *
- * Claims shape:
- * {
- *   iss, sub (userId), email, given_name (firstName),
- *   family_name (lastName), name, exp
- * }
- */
+const client = jwksClient({
+  // Ensure this is the exact URL that returns the {"keys": [...]} array
+  jwksUri: `${process.env.CHAI_AUR_AUTH_ISSUER}/o/certs`
+});
+
+function getKey(header, callback) {
+  client.getSigningKey(header.kid, function(err, key) {
+    if (err) {
+      console.error("jwksClient Error fetching key:", err);
+      return callback(err, null);
+    }
+    const signingKey = key.publicKey || key.rsaPublicKey;
+    callback(null, signingKey);
+  });
+}
+
 export function verifyToken(token) {
-  return JWT.verify(token, PUBLIC_KEY, { algorithms: ["RS256"] });
+  return new Promise((resolve, reject) => {
+    // We pass algorithms, but we don't enforce 'issuer' yet to be safe
+    JWT.verify(token, getKey, { algorithms: ["RS256"] }, (err, decoded) => {
+      if (err) {
+         console.error("JWT Verify Error:", err.message);
+         return reject(err);
+      }
+      resolve(decoded);
+    });
+  });
 }

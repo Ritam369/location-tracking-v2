@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "oidc": "bun run --watch oidc-server.js",
     "tracker": "bun run --watch location-tracker-server.js",
     "db:processor": "bun run src/modules/location-tracker/database-processor.js",
     "db:generate": "drizzle-kit generate",
@@ -16,6 +15,7 @@
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "jwks-rsa": "^4.0.1",
     "kafkajs": "^2.2.4",
     "node-jose": "^2.2.0",
     "pg": "^8.20.0",

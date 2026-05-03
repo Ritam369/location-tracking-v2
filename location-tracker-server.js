@@ -7,6 +7,7 @@ import { kafkaClient } from "./src/modules/location-tracker/kafka-client.js";
 import { startSocketConsumer } from "./src/modules/location-tracker/socket-consumer.js";
 import { startDatabaseProcessor } from "./src/modules/location-tracker/database-processor.js";
 import { verifyToken } from "./src/common/utils/user-token.js";
+import oidcRoutes from "./src/modules/oidc/routes.js";
 
 const PORT = process.env.TRACKER_PORT || 3000;
 
@@ -16,20 +17,26 @@ const io = new Server(server);
 
 // Auth middleware
 
-function requireAuth(req, res, next) {
-  const token = req.cookies?.auth_token;
-  if (!token)
-    return res.redirect(
-      `http://localhost:${process.env.OIDC_PORT || 8000}/o/authenticate`,
-    );
+async function requireAuth(req, res, next) {
+  const token = req.cookies?.access_token; 
+  
+  if (!token) {
+     console.log("No access_token cookie found. Redirecting to login.");
+     return res.redirect("/oidc/login");
+  }
+  
   try {
-    req.user = verifyToken(token);
+    req.user = await verifyToken(token); 
     next();
-  } catch {
-    res.clearCookie("auth_token");
-    return res.redirect(
-      `http://localhost:${process.env.OIDC_PORT || 8000}/o/authenticate`,
-    );
+  } catch (err) {
+    console.error("Token verification failed in middleware:", err);
+    res.clearCookie("access_token");
+    
+    // TEMPORARY DEBUG: Stop the redirect loop and show the error in the browser
+    return res.status(401).send(`Authentication Failed: ${err.message}. Check server console for details.`);
+    
+    // Once fixed, revert back to:
+    // return res.redirect("/oidc/login");
   }
 }
 
@@ -48,39 +55,18 @@ app.use((req, res, next) => {
   next();
 });
 
-// Set-cookie endpoint (called after OIDC redirect with token)
-
-app.get("/set-cookie", (req, res) => {
-  const { token } = req.query;
-  if (!token)
-    return res.redirect(
-      `http://localhost:${process.env.OIDC_PORT || 8000}/o/authenticate`,
-    );
-  try {
-    verifyToken(token);
-    res.cookie("auth_token", token, {
-      httpOnly: true,
-      sameSite: "lax",
-      maxAge: 3600 * 1000,
-    });
-    return res.redirect("/");
-  } catch {
-    return res.redirect(
-      `http://localhost:${process.env.OIDC_PORT || 8000}/o/authenticate`,
-    );
-  }
-});
-
 // Static files — protected
+
+app.use("/oidc", oidcRoutes);
 
 app.use(requireAuth, express.static(path.resolve("public")));
 app.get("/health", (req, res) => res.json({ healthy: true }));
 
 // Socket.IO auth middleware
 
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const cookie = socket.handshake.headers.cookie || "";
-  const token = Object.fromEntries(
+  const cookiesObj = Object.fromEntries(
     cookie
       .split(";")
       .filter(Boolean)
@@ -88,13 +74,18 @@ io.use((socket, next) => {
         const [k, ...v] = c.trim().split("=");
         return [k, decodeURIComponent(v.join("="))];
       }),
-  )?.auth_token;
+  );
+
+  // Look for access_token instead of auth_token
+  const token = cookiesObj?.access_token;
 
   if (!token) return next(new Error("Unauthorized"));
+  
   try {
-    socket.user = verifyToken(token);
+    // verifyToken is now async
+    socket.user = await verifyToken(token);
     next();
-  } catch {
+  } catch (err) {
     next(new Error("Unauthorized"));
   }
 });
@@ -111,7 +102,8 @@ async function main() {
   // Socket events
 
   io.on("connection", (socket) => {
-    const { sub: userId, given_name: firstName } = socket.user;
+    const { sub: userId, name: firstName } = socket.user;
+    
     console.log(
       `User connected: ${firstName} (${userId}) — socket ${socket.id}`,
     );
